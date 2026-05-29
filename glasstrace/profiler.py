@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from typing import Callable
 
 import torch.nn as nn
 
@@ -26,13 +27,31 @@ class ProfileResult:
 
 
 @contextmanager
-def profile(model: nn.Module):
+def profile(model: nn.Module, warmup: Callable[[], None] | None = None):
     """Profile a model's forward passes within a with-block.
 
+    Args:
+        model: the model to instrument.
+        warmup: optional zero-arg callable run once before profiling starts,
+            with its events discarded. Use this to pay one-time GPU costs
+            (kernel compilation, cuBLAS init) so they don't distort the
+            profile. Strongly recommended on CUDA.
+
     Example:
-        with glasstrace.profile(model) as p:
+        with glasstrace.profile(
+                model,
+                warmup=lambda: model.generate(**inputs, max_new_tokens=5)
+            ) as p:
+
             model.generate(**inputs, max_new_tokens=50)
-        print(p.report())"""
+        print(p.report())
+    """
+    if warmup is not None:
+        import torch
+        with torch.no_grad():
+            warmup()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
 
     tracer = ModuleTracer()
     tracer.attach(model)

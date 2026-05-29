@@ -8,7 +8,11 @@ import glasstrace
 MODEL_NAME = "Qwen/Qwen2.5-0.5B"
 
 
+
 def main() -> None:
+    def warmup():
+        model.generate(**inputs, max_new_tokens=5, do_sample=False)
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Loading {MODEL_NAME} on {device}...")
 
@@ -17,7 +21,7 @@ def main() -> None:
     inputs = tokenizer("Hello, world!", return_tensors="pt").to(device)
 
     print("Profiling forward pass...")
-    with glasstrace.profile(model) as p:
+    with glasstrace.profile(model, warmup=warmup) as p:
         with torch.no_grad():
             model.generate(**inputs, max_new_tokens=20, do_sample=False)
 
