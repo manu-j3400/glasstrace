@@ -1,4 +1,5 @@
 # glasstrace
+[![CI](https://github.com/manu-j3400/glasstrace/actions/workflows/ci.yml/badge.svg)](https://github.com/manu-j3400/glasstrace/actions/workflows/ci.yml)
 
 > Per-layer latency and memory profiler for transformer inference.
 
