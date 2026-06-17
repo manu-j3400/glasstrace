@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
 
 import torch
 import torch.nn as nn
+
+
+class Phase(str, Enum):
+    PREFILL = "prefill"
+    DECODE = "decode"
+    UNKNOWN = "unknown"
 
 
 @dataclass
@@ -20,6 +27,7 @@ class ModuleEvent:
     output_shape: tuple | None # shape of the output tensor, if any
     duration_ms: float         # how long the forward pass took, in milliseconds
     device: str                # "cuda", "mps", or "cpu"
+    phase: Phase = Phase.UNKNOWN
 
 
 @dataclass
@@ -32,8 +40,11 @@ class ModuleTracer:
 
     target_types: tuple[type, ...] = (nn.Linear, nn.LayerNorm)
     events: list[ModuleEvent] = field(default_factory=list)
+    memory_samples: list[dict] = field(default_factory=list)
     _handles: list[Any] = field(default_factory=list)
     _pending: dict[int, dict[str, Any]] = field(default_factory=dict)
+    _pass_count: int = 0  #tracks forward pass number
+
 
     def attach(self, model: nn.Module) -> None:
         """Walk the model and register hooks on every module of a target type."""
@@ -46,6 +57,37 @@ class ModuleTracer:
                     self._make_post_hook(name, type(module).__name__)
                 )
                 self._handles.extend([pre_handle, post_handle])
+
+
+        self._attach_memory_sampler(model)
+
+    def _attach_memory_sampler(self, model: nn.Module) -> None:
+        """Sample GPU memory allocated at the start of each forward pass."""
+        import torch
+        if not torch.cuda.is_available():
+            return
+
+        tracer_ref = self  # capture self for the closure
+
+        for name, module in model.named_modules():
+            if isinstance(module, nn.Linear):
+                def memory_hook(mod, inputs):
+                    mem_bytes = torch.cuda.memory_allocated()
+                    phase = tracer_ref._detect_phase(
+                        tracer_ref._shape_of(inputs[0]) if inputs else None
+                    )
+                    tracer_ref.memory_samples.append({
+                        "pass": tracer_ref._pass_count,
+                        "phase": phase.value,
+                        "memory_bytes": mem_bytes,
+                    })
+                    tracer_ref._pass_count += 1
+
+                handle = module.register_forward_pre_hook(memory_hook)
+                self._handles.append(handle)
+                break  # first Linear only
+
+        return
 
     def detach(self) -> None:
         """Remove all registered hooks."""
@@ -83,16 +125,19 @@ class ModuleTracer:
         def post_hook(module: nn.Module, inputs: tuple, output: Any) -> None:
             timing = self._pending.pop(id(module), None)
             if timing is None:
-                return  # pre-hook didn't fire; skip
+                return
 
             output_shape = self._shape_of(output)
 
             if timing["device"] == "cuda":
                 timing["cuda_end"].record()
-                torch.cuda.synchronize()  # block until both events are recorded
+                torch.cuda.synchronize()
                 duration_ms = timing["cuda_start"].elapsed_time(timing["cuda_end"])
             else:
                 duration_ms = (time.perf_counter() - timing["wall_start"]) * 1000.0
+
+            # Detect phase from input sequence dimension
+            phase = self._detect_phase(timing["input_shape"])
 
             self.events.append(
                 ModuleEvent(
@@ -102,6 +147,7 @@ class ModuleTracer:
                     output_shape=output_shape,
                     duration_ms=duration_ms,
                     device=timing["device"],
+                    phase=phase,
                 )
             )
 
@@ -123,3 +169,22 @@ class ModuleTracer:
         for p in module.parameters():
             return p.device.type
         return "cpu"
+
+
+    @staticmethod
+    def _detect_phase(input_shape: tuple | None) -> Phase:
+        """Infer prefill vs decode from the sequence dimension of the input.
+
+        For decoder-only transformers: seq_len > 1 means prefill (processing
+        the full prompt). seq_len == 1 means decode (one new token per pass).
+        """
+        if input_shape is None:
+            return Phase.UNKNOWN
+        # Shape is (batch, seq_len, hidden_dim) for most transformer layers
+        if len(input_shape) >= 2:
+            seq_len = input_shape[1]
+            if seq_len == 1:
+                return Phase.DECODE
+            if seq_len > 1:
+                return Phase.PREFILL
+        return Phase.UNKNOWN

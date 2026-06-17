@@ -14,13 +14,14 @@ from glasstrace.report import format_report
 
 @dataclass
 class ProfileResult:
-    """Holds events collected during a profile() block. Exposes report helpers."""
+    """Holds events and memory samples from a profile() block."""
 
     events: list[ModuleEvent] = field(default_factory=list)
+    memory_samples: list[dict] = field(default_factory=list)
 
     def report(self, top_n: int = 20) -> str:
-        """Return a formatted text-table report."""
-        return format_report(self.events, top_n=top_n)
+        """Return a formatted two-section text report."""
+        return format_report(self.events, self.memory_samples, top_n=top_n)
 
     def __len__(self) -> int:
         return len(self.events)
@@ -33,16 +34,14 @@ def profile(model: nn.Module, warmup: Callable[[], None] | None = None):
     Args:
         model: the model to instrument.
         warmup: optional zero-arg callable run once before profiling starts,
-            with its events discarded. Use this to pay one-time GPU costs
-            (kernel compilation, cuBLAS init) so they don't distort the
-            profile. Strongly recommended on CUDA.
+            with its events discarded. Strongly recommended on CUDA to avoid
+            cold-start timing artifacts.
 
     Example:
-        with glasstrace.profile(
-                model,
-                warmup=lambda: model.generate(**inputs, max_new_tokens=5)
-            ) as p:
+        def warmup():
+            model.generate(**inputs, max_new_tokens=5)
 
+        with glasstrace.profile(model, warmup=warmup) as p:
             model.generate(**inputs, max_new_tokens=50)
         print(p.report())
     """
@@ -55,7 +54,7 @@ def profile(model: nn.Module, warmup: Callable[[], None] | None = None):
 
     tracer = ModuleTracer()
     tracer.attach(model)
-    result = ProfileResult(events=tracer.events)
+    result = ProfileResult(events=tracer.events, memory_samples=tracer.memory_samples)
     try:
         yield result
     finally:
