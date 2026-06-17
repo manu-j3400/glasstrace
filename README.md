@@ -40,7 +40,7 @@ print(p.report())
 ## Roadmap
 
 - [x] v0.1 — Per-module CUDA timing, text-table report
-- [ ] v0.2 — Prefill vs decode split, memory tracking, HTML report
+- [x] v0.2 — Prefill vs decode split, memory tracking, HTML report
 - [ ] v0.3 — Multi-model tested coverage, CLI
 - [ ] v0.4 — Comparative analyses across Llama, Qwen, Phi (blog post)
 - [ ] v1.0 — PyPI release, docs, demo video
