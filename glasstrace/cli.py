@@ -79,7 +79,7 @@ def _run_profile(args: argparse.Namespace) -> None:
     print(f"Loading {args.model} on {device}...")
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
-        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+        dtype=torch.float16 if device == "cuda" else torch.float32,
     ).to(device)
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     inputs = tokenizer(args.prompt, return_tensors="pt").to(device)
