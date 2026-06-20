@@ -7,6 +7,8 @@
 
 > Per-layer latency and memory profiler for transformer inference.
 
+## Why
+
 Most LLM inference tools give you total latency and call it a day.
 That's not enough if you actually want to know what's slow.
 glasstrace hooks into your model and tells you where the time goes,
