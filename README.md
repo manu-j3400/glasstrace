@@ -7,6 +7,8 @@
 
 > Per-layer latency and memory profiler for transformer inference.
 
+## Why
+
 Most LLM inference tools give you total latency and call it a day.
 That's not enough if you actually want to know what's slow.
 glasstrace hooks into your model and tells you where the time goes,
@@ -74,24 +76,6 @@ Three things stand out from the data:
 - Decode speed scales sub-linearly with size. Qwen 3B is 6x larger than 0.5B but only 2.5x slower per token.
 - KV-cache growth is about architecture, not parameter count. SmolLM2 1.7B grows its cache 6.8x faster than Qwen 1.5B at similar size.
 - lm_head's share of decode shrinks as models get deeper because the body scales faster than the vocab projection.
-
-## What I found building this
-
-**Your GPU profiler lies on the first run.**
-Cold-start overhead from kernel compilation and cuBLAS init gets
-dumped onto whichever layer fires first, making it look 20x slower
-than identical layers. The warmup parameter exists specifically
-because of this — without it the numbers are garbage.
-
-**Prefill and decode are not the same workload.**
-Prefill runs once and processes your whole prompt in parallel.
-Decode runs once per token. Combining them into a single latency
-number describes neither. glasstrace separates them automatically.
-
-**lm_head costs more than people expect, and where you run it matters.**
-On CPU it ate 25% of total inference time. On a T4 it dropped to 10%.
-Same computation, completely different profile. The bottleneck doesn't
-disappear — it shifts with hardware.
 
 ## How it works
 
