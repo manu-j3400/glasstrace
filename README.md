@@ -22,8 +22,6 @@ pip install glasstrace
 
 ## Quick start
 
-### Input
-
 ```python
 import glasstrace
 from transformers import AutoModelForCausalLM, AutoTokenizer
