@@ -93,7 +93,7 @@ the one-time GPU initialization cost before measurement starts.
 - [x] v0.1 — per-module CUDA timing, text-table report
 - [x] v0.1.1 — warmup phase, cold-start artifact fix
 - [x] v0.2 — prefill/decode split, KV-cache tracking, PyPI release
-- [ ] v0.3 — CLI (`glasstrace profile --model Qwen/Qwen2.5-0.5B`)
+- [x] v0.3 — CLI (`glasstrace profile --model Qwen/Qwen2.5-0.5B`)
 - [ ] v0.4 — HTML report with flamegraph
 - [ ] v1.0 — extended model coverage, docs site
 
