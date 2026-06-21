@@ -1,0 +1,3 @@
+theme: jekyll-theme-midnight
+title: glasstrace
+description: Per-layer latency and memory profiler for transformer inference.
