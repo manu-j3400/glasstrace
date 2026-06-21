@@ -39,6 +39,7 @@ with glasstrace.profile(model, warmup=warmup) as p:
         model.generate(**inputs, max_new_tokens=20, do_sample=False)
 
 print(p.report())
+p.save_html("report.html")  # interactive HTML report
 ```
 
 ### Output:
@@ -92,7 +93,7 @@ the one-time GPU initialization cost before measurement starts.
 - [x] v0.1.1 — warmup phase, cold-start artifact fix
 - [x] v0.2 — prefill/decode split, KV-cache tracking, PyPI release
 - [x] v0.3 — CLI (`glasstrace profile --model Qwen/Qwen2.5-0.5B`)
-- [ ] v0.4 — HTML report with flamegraph
+- [x] v0.4 — HTML report with flamegraph
 - [ ] v1.0 — extended model coverage, docs site
 
 ## License

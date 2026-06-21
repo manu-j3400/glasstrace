@@ -1,0 +1,338 @@
+"""HTML report generation for glasstrace profile results."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from glasstrace.hooks import ModuleEvent, Phase
+
+
+def save_html(
+    events: list[ModuleEvent],
+    memory_samples: list[dict],
+    path: str | Path = "glasstrace_report.html",
+) -> Path:
+    """Generate a standalone HTML report and write it to disk.
+
+    Args:
+        events: list of ModuleEvent from a profile() run.
+        memory_samples: memory samples from the same run.
+        path: output file path. Defaults to glasstrace_report.html.
+
+    Returns:
+        The resolved output path.
+    """
+    path = Path(path)
+
+    prefill = [e for e in events if e.phase == Phase.PREFILL]
+    decode = [e for e in events if e.phase == Phase.DECODE]
+
+    prefill_ms = sum(e.duration_ms for e in prefill)
+    decode_ms = sum(e.duration_ms for e in decode)
+    total_ms = prefill_ms + decode_ms
+    device = events[0].device if events else "unknown"
+
+    # Per-token avg
+    first_decode_module = decode[0].module_path if decode else None
+    decode_passes = len([
+        e for e in decode if e.module_path == first_decode_module
+    ]) if first_decode_module else 0
+    per_token_ms = decode_ms / decode_passes if decode_passes > 0 else 0
+
+    # KV cache growth
+    kv_growth_mb = 0.0
+    if memory_samples:
+        decode_samples = [s for s in memory_samples if s["phase"] == "decode"]
+        if len(decode_samples) >= 2:
+            kv_growth_mb = (
+                max(s["memory_bytes"] for s in decode_samples) -
+                min(s["memory_bytes"] for s in decode_samples)
+            ) / (1024 ** 2)
+
+    # Aggregate by module path for chart data
+    from collections import defaultdict
+    agg: dict[str, dict] = defaultdict(
+        lambda: {"total_ms": 0.0, "calls": 0, "type": "", "phase": ""}
+    )
+    for e in events:
+        a = agg[e.module_path]
+        a["total_ms"] += e.duration_ms
+        a["calls"] += 1
+        a["type"] = e.module_type
+        a["phase"] = e.phase.value
+
+    # Top 30 by total time for the chart
+    sorted_modules = sorted(
+        agg.items(), key=lambda x: x[1]["total_ms"], reverse=True
+    )[:30]
+
+    chart_labels_short = [m[0] for m in sorted_modules]
+    chart_values = [round(m[1]["total_ms"], 3) for m in sorted_modules]
+    chart_phases = [m[1]["phase"] for m in sorted_modules]
+    chart_colors = [
+        "#4C9BE8" if p == "prefill" else "#E8824C" if p == "decode" else "#888"
+        for p in chart_phases
+    ]
+
+    # Full table rows
+    table_rows = ""
+    for path_key, vals in sorted_modules:
+        pct = (vals["total_ms"] / total_ms * 100) if total_ms > 0 else 0
+        per_call = vals["total_ms"] / vals["calls"] if vals["calls"] > 0 else 0
+        phase_badge = (
+            '<span class="badge prefill">prefill</span>'
+            if vals["phase"] == "prefill"
+            else '<span class="badge decode">decode</span>'
+            if vals["phase"] == "decode"
+            else '<span class="badge unknown">unknown</span>'
+        )
+        table_rows += f"""
+        <tr>
+            <td class="module-path">{path_key}</td>
+            <td>{vals["type"]}</td>
+            <td>{phase_badge}</td>
+            <td>{vals["calls"]}</td>
+            <td>{vals["total_ms"]:.2f}</td>
+            <td>{per_call:.2f}</td>
+            <td>{pct:.1f}%</td>
+        </tr>"""
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>glasstrace report</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", monospace;
+    background: #0d1117;
+    color: #e6edf3;
+    padding: 2rem;
+  }}
+  h1 {{ font-size: 1.6rem; font-weight: 700; margin-bottom: 0.25rem; }}
+  .subtitle {{ color: #8b949e; font-size: 0.9rem; margin-bottom: 2rem; }}
+  .cards {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }}
+  .card {{
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 1rem;
+  }}
+  .card .label {{ color: #8b949e; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }}
+  .card .value {{ font-size: 1.4rem; font-weight: 700; margin-top: 0.25rem; }}
+  .card .value.blue {{ color: #4C9BE8; }}
+  .card .value.orange {{ color: #E8824C; }}
+  .card .value.green {{ color: #3fb950; }}
+  .chart-container {{
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }}
+  .chart-container h2 {{ font-size: 1rem; margin-bottom: 1rem; color: #e6edf3; }}
+  .legend {{
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+    font-size: 0.8rem;
+    color: #8b949e;
+  }}
+  .legend-dot {{
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    margin-right: 4px;
+  }}
+  table {{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    overflow: hidden;
+  }}
+  th {{
+    background: #21262d;
+    color: #8b949e;
+    text-align: left;
+    padding: 0.6rem 0.8rem;
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    user-select: none;
+  }}
+  th:hover {{ color: #e6edf3; }}
+  td {{
+    padding: 0.5rem 0.8rem;
+    border-top: 1px solid #21262d;
+    color: #e6edf3;
+  }}
+  tr:hover td {{ background: #21262d; }}
+  .module-path {{
+    font-family: monospace;
+    font-size: 0.78rem;
+    color: #79c0ff;
+    max-width: 400px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }}
+  .badge {{
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }}
+  .badge.prefill {{ background: #1f3a5f; color: #4C9BE8; }}
+  .badge.decode {{ background: #3d2109; color: #E8824C; }}
+  .badge.unknown {{ background: #21262d; color: #8b949e; }}
+  .section-header {{
+    font-size: 0.85rem;
+    color: #8b949e;
+    margin: 1.5rem 0 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #30363d;
+  }}
+</style>
+</head>
+<body>
+
+<h1>glasstrace report</h1>
+<p class="subtitle">Per-layer inference profile · device: {device}</p>
+
+<div class="cards">
+  <div class="card">
+    <div class="label">Total time</div>
+    <div class="value">{total_ms:.1f}<span style="font-size:0.8rem;color:#8b949e"> ms</span></div>
+  </div>
+  <div class="card">
+    <div class="label">Prefill</div>
+    <div class="value blue">{prefill_ms:.1f}<span style="font-size:0.8rem;color:#8b949e"> ms</span></div>
+  </div>
+  <div class="card">
+    <div class="label">Decode total</div>
+    <div class="value orange">{decode_ms:.1f}<span style="font-size:0.8rem;color:#8b949e"> ms</span></div>
+  </div>
+  <div class="card">
+    <div class="label">ms / token</div>
+    <div class="value orange">{per_token_ms:.1f}</div>
+  </div>
+  <div class="card">
+    <div class="label">Modules</div>
+    <div class="value">{len(set(e.module_path for e in events))}</div>
+  </div>
+  <div class="card">
+    <div class="label">KV-cache growth</div>
+    <div class="value green">{kv_growth_mb:.2f}<span style="font-size:0.8rem;color:#8b949e"> MB</span></div>
+  </div>
+</div>
+
+<div class="chart-container">
+  <h2>Top 30 modules by total time</h2>
+  <div class="legend">
+    <span><span class="legend-dot" style="background:#4C9BE8"></span>prefill</span>
+    <span><span class="legend-dot" style="background:#E8824C"></span>decode</span>
+  </div>
+  <canvas id="chart" height="120"></canvas>
+</div>
+
+<h2 class="section-header">All modules — top 30 by total time</h2>
+<table id="moduleTable">
+  <thead>
+    <tr>
+      <th onclick="sortTable(0)">Module</th>
+      <th onclick="sortTable(1)">Type</th>
+      <th onclick="sortTable(2)">Phase</th>
+      <th onclick="sortTable(3)">Calls</th>
+      <th onclick="sortTable(4)">Total ms ↓</th>
+      <th onclick="sortTable(5)">Per-call ms</th>
+      <th onclick="sortTable(6)">% of total</th>
+    </tr>
+  </thead>
+  <tbody>
+    {table_rows}
+  </tbody>
+</table>
+
+<script>
+const ctx = document.getElementById('chart').getContext('2d');
+new Chart(ctx, {{
+  type: 'bar',
+  data: {{
+    labels: {json.dumps(chart_labels_short)},
+    datasets: [{{
+      data: {json.dumps(chart_values)},
+      backgroundColor: {json.dumps(chart_colors)},
+      borderRadius: 3,
+    }}]
+  }},
+  options: {{
+    responsive: true,
+    plugins: {{
+      legend: {{ display: false }},
+      tooltip: {{
+        callbacks: {{
+          label: ctx => ctx.parsed.y.toFixed(2) + ' ms'
+        }}
+      }}
+    }},
+    scales: {{
+      x: {{
+        ticks: {{
+          color: '#8b949e',
+          font: {{ size: 10 }},
+          maxRotation: 45,
+        }},
+        grid: {{ color: '#21262d' }}
+      }},
+      y: {{
+        ticks: {{ color: '#8b949e' }},
+        grid: {{ color: '#21262d' }},
+        title: {{
+          display: true,
+          text: 'Total ms',
+          color: '#8b949e'
+        }}
+      }}
+    }}
+  }}
+}});
+
+function sortTable(col) {{
+  const table = document.getElementById('moduleTable');
+  const rows = Array.from(table.querySelectorAll('tbody tr'));
+  const asc = table.dataset.sortCol == col && table.dataset.sortDir == 'asc';
+  rows.sort((a, b) => {{
+    const av = a.cells[col].innerText.trim();
+    const bv = b.cells[col].innerText.trim();
+    const an = parseFloat(av);
+    const bn = parseFloat(bv);
+    if (!isNaN(an) && !isNaN(bn)) return asc ? an - bn : bn - an;
+    return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+  }});
+  rows.forEach(r => table.querySelector('tbody').appendChild(r));
+  table.dataset.sortCol = col;
+  table.dataset.sortDir = asc ? 'desc' : 'asc';
+}}
+</script>
+
+</body>
+</html>"""
+
+    path.write_text(html, encoding="utf-8")
+    return path

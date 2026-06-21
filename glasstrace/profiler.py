@@ -26,6 +26,13 @@ class ProfileResult:
     def __len__(self) -> int:
         return len(self.events)
 
+    def save_html(self, path: str = "glasstrace_report.html") -> str:
+        """Generate a standalone HTML report and write it to disk."""
+        from glasstrace.html_report import save_html as _save_html
+        out = _save_html(self.events, self.memory_samples, path=path)
+        print(f"Report saved to {out}")
+        return str(out)
+
 
 @contextmanager
 def profile(model: nn.Module, warmup: Callable[[], None] | None = None):
