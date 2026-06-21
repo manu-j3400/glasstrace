@@ -4,10 +4,7 @@
 [![PyPI](https://img.shields.io/pypi/v/glasstrace.svg)](https://pypi.org/project/glasstrace/)
 [![Python](https://img.shields.io/pypi/pyversions/glasstrace.svg)](https://pypi.org/project/glasstrace/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-
-**[Go to the Documentation](https://manu-j3400.github.io/glasstrace/)**
-
+**[Documentation](https://manu-j3400.github.io/glasstrace/)** · [PyPI](https://pypi.org/project/glasstrace/) · [Issues](https://github.com/manu-j3400/glasstrace/issues)
 
 > Per-layer latency and memory profiler for transformer inference.
 
@@ -98,7 +95,7 @@ the one-time GPU initialization cost before measurement starts.
 - [x] v0.2 — prefill/decode split, KV-cache tracking, PyPI release
 - [x] v0.3 — CLI (`glasstrace profile --model Qwen/Qwen2.5-0.5B`)
 - [x] v0.4 — HTML report with flamegraph
-- [ ] v1.0 — extended model coverage, docs site
+- [x] v1.0 — extended model coverage, docs site
 
 ## License
 
