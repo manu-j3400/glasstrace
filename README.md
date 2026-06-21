@@ -5,6 +5,10 @@
 [![Python](https://img.shields.io/pypi/pyversions/glasstrace.svg)](https://pypi.org/project/glasstrace/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+
+**[Go to the Documentation](https://manu-j3400.github.io/glasstrace/)**
+
+
 > Per-layer latency and memory profiler for transformer inference.
 
 ## Why
