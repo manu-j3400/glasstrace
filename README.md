@@ -13,7 +13,7 @@
 When a language model answers you, it isn't one big step but more so hundreds of
 small ones stacked on top of each other (the "layers"). Most tools hand you a
 single number: *"that took 400 milliseconds."* Useful, but it's like a
-restaurant bill that just says **$80** with no line items — you can't tell what
+restaurant bill that just says **$80** with no line items s0 you can't tell what
 was expensive.
 
 **glasstrace is the itemized bill.** It puts a stopwatch on every layer of the
@@ -29,7 +29,7 @@ It also splits the work into the two very different jobs a model does:
   time goes.
 
 If you've ever wondered *why* a model feels slow and if the reason is a prompt,
-the generation, or one greedy layer hogging everything — that's the question
+the generation, or one greedy layer hogging everything and that's the question
 glasstrace answers.
 
 ## Install
@@ -61,7 +61,7 @@ p.save_html("report.html")  # interactive HTML report
 ```
 
 > No NVIDIA GPU? Drop the `.to("cuda")` calls (or use `"mps"` on an Apple-silicon
-> Mac) and you'll get the same per-layer breakdown — timing just uses the wall
+> Mac) and you'll get the same per-layer breakdown. Timing just uses the wall
 > clock instead of CUDA events. The `glasstrace` CLI auto-detects your device.
 
 ### Output:
