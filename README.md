@@ -29,8 +29,7 @@ It also splits the work into the two very different jobs a model does:
   time goes.
 
 If you've ever wondered *why* a model feels slow and if the reason is a prompt,
-the generation, or one greedy layer hogging everything and that's the question
-glasstrace answers.
+the generation, or one greedy layer hogging everything then that's where glasstrace comes in.
 
 ## Install
 
